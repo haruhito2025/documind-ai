@@ -76,3 +76,28 @@ class EngineConfig:
             }
         }
         return configs.get(model_name, configs["gpt-3.5-turbo"])
+
+    @staticmethod
+    def get_ocr_config() -> Dict[str, Any]:
+        """共通のOCR設定を取得"""
+        return {
+            "easyocr": {
+                "languages": ["ja", "en"],
+                "gpu": True,
+                "confidence_threshold": 0.5
+            },
+            "paddle": {
+                "use_angle_cls": True,
+                "lang": "japan",
+                "confidence_threshold": 0.6
+            },
+            "tesseract": {
+                "lang": "jpn+eng",
+                "confidence_threshold": 0.6
+            },
+            "multi": {
+                "engines": ["easyocr", "paddle", "tesseract"],
+                "selection_strategy": "max_chars",
+                "confidence_threshold": 0.4
+            }
+        }

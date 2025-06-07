@@ -185,8 +185,8 @@ def validate_pdf_file(file_path: Path) -> Dict[str, Any]:
             result["error"] = "ページが含まれていません"
             return result
         
-        if result["pages"] > 100:
-            result["error"] = "ページ数が多すぎます (100ページ以下)"
+        if result["pages"] > 300:
+            result["error"] = "ページ数が多すぎます (300ページ以下)"
             return result
         
         result["valid"] = True

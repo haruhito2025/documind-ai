@@ -23,6 +23,13 @@ except ImportError:
     PADDLE_AVAILABLE = False
     logger.warning("PaddleOCR not available")
 
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    logger.warning("Tesseract not available")
+
 @dataclass
 class PageResult:
     page_num: int
@@ -211,6 +218,82 @@ class PaddleOCREngine(BaseOCREngine):
     def get_confidence_threshold(self) -> float:
         return self.confidence_threshold
 
+class TesseractOCREngine(BaseOCREngine):
+    """Tesseract OCRエンジン実装"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        if not TESSERACT_AVAILABLE:
+            raise ImportError("Tesseract is not available")
+        
+        self.config = config
+        self.lang = config.get("lang", "jpn+eng")
+        self.confidence_threshold = config.get("confidence_threshold", 0.6)
+        
+        # Tesseractの設定
+        self.tesseract_config = {
+            "lang": self.lang,
+            "config": "--psm 3"  # 自動ページセグメンテーションモード
+        }
+    
+    def extract_text_from_pdf(self, pdf_path: Path) -> Dict[str, Any]:
+        """PDFからテキストを抽出"""
+        results = {"text_by_page": {}, "success": False, "total_chars": 0, "engine": "tesseract"}
+        
+        try:
+            images = convert_from_path(pdf_path, dpi=300)  # より高解像度で変換
+            
+            for page_num, image in enumerate(images, 1):
+                text = self.extract_text_from_image_pil(image)
+                if text and len(text.strip()) > 10:
+                    cleaned_text = self._clean_text(text)
+                    results["text_by_page"][page_num] = cleaned_text
+                    results["total_chars"] += len(cleaned_text)
+            
+            results["success"] = True
+            return results
+            
+        except Exception as e:
+            logger.error(f"Tesseract処理エラー: {e}")
+            results["error"] = str(e)
+            return results
+    
+    def extract_text_from_image(self, image_path: Path) -> str:
+        """画像からテキストを抽出"""
+        try:
+            text = pytesseract.image_to_string(
+                Image.open(image_path),
+                **self.tesseract_config
+            )
+            return text
+        except Exception as e:
+            logger.error(f"Tesseract画像処理エラー: {e}")
+            return ""
+    
+    def extract_text_from_image_pil(self, image: Image.Image) -> str:
+        """PIL画像からテキストを抽出"""
+        try:
+            text = pytesseract.image_to_string(
+                image,
+                **self.tesseract_config
+            )
+            return text
+        except Exception as e:
+            logger.error(f"Tesseract PIL画像処理エラー: {e}")
+            return ""
+    
+    def _clean_text(self, text: str) -> str:
+        """テキストクリーニング"""
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = text.replace('〇', '○').replace('0', '〇')
+        text = re.sub(r'[^\w\s\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\u3400-\u4DBF。、！？]', '', text)
+        return text
+    
+    def get_engine_name(self) -> str:
+        return "tesseract"
+    
+    def get_confidence_threshold(self) -> float:
+        return self.confidence_threshold
+
 class MultiEngineOCR(BaseOCREngine):
     """複数エンジンを組み合わせたOCR"""
     
@@ -269,27 +352,30 @@ class MultiEngineOCR(BaseOCREngine):
         return self.confidence_threshold
 
 class OCRFactory:
-    """OCRエンジンファクトリ"""
+    """OCRエンジンファクトリー"""
     
     @staticmethod
     def create_engine(engine_name: str) -> BaseOCREngine:
-        """指定されたエンジンを作成"""
-        config = EngineConfig.get_ocr_engine_config(engine_name)
+        """指定されたエンジン名のOCRエンジンを作成"""
+        config = EngineConfig.get_ocr_config()
         
         if engine_name == "easyocr":
             return EasyOCREngine(config)
-        elif engine_name == "paddle":
+        elif engine_name == "paddle" and PADDLE_AVAILABLE:
             return PaddleOCREngine(config)
+        elif engine_name == "tesseract" and TESSERACT_AVAILABLE:
+            return TesseractOCREngine(config)
         elif engine_name == "multi":
             return MultiEngineOCR(config)
         else:
-            raise ValueError(f"未対応のOCRエンジン: {engine_name}")
+            raise ValueError(f"Unknown OCR engine: {engine_name}")
     
     @staticmethod
     def get_available_engines() -> List[str]:
-        """利用可能なエンジン一覧を取得"""
-        engines = ["easyocr"]
+        """利用可能なOCRエンジンのリストを取得"""
+        engines = ["easyocr", "multi"]
         if PADDLE_AVAILABLE:
             engines.append("paddle")
-        engines.append("multi")
+        if TESSERACT_AVAILABLE:
+            engines.append("tesseract")
         return engines

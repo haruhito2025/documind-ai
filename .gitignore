@@ -1,0 +1,52 @@
+# Environment variables
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data directories
+data/
+uploads/
+vector_store/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 

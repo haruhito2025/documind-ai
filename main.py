@@ -4,6 +4,10 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import time
+from dotenv import load_dotenv
+
+# .envファイルの読み込み
+load_dotenv()
 
 from config.settings import settings
 from modules.document_processor.unified_ocr import OCRFactory
@@ -13,9 +17,11 @@ from modules.integrations.notion_client import FeedbackManager
 from utils.file_utils import FileManager, validate_pdf_file
 from utils.text_processing import clean_ocr_text, format_text_for_display
 
+# ロギングの設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Streamlitの設定
 st.set_page_config(
     page_title="DocuMind AI",
     page_icon="📄",
@@ -73,7 +79,7 @@ def document_input_tab(file_manager: FileManager, vector_store: ChromaVectorStor
         uploaded_file = st.file_uploader(
             "PDFファイルを選択してください",
             type=['pdf'],
-            help="最大50MB、100ページまでのPDFファイルをサポート"
+            help="最大50MB、300ページまでのPDFファイルをサポート"
         )
         
         if uploaded_file is not None:
