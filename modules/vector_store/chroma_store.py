@@ -155,6 +155,24 @@ class ChromaVectorStore(BaseVectorStore):
         except Exception as e:
             logger.error(f"永続化エラー: {e}")
             raise
+    
+    def get_all_documents(self) -> List[Any]:
+        """すべてのドキュメントを取得"""
+        try:
+            results = self.vectorstore.get()
+            documents = []
+            
+            for i in range(len(results["ids"])):
+                doc = {
+                    "text": results["documents"][i],
+                    "metadata": results["metadatas"][i]
+                }
+                documents.append(doc)
+            
+            return documents
+        except Exception as e:
+            logger.error(f"ドキュメント取得エラー: {e}")
+            return []
 
 class DocumentProcessor:
     """ドキュメント処理ユーティリティ"""

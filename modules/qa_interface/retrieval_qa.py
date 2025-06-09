@@ -8,6 +8,7 @@ from langchain.prompts import PromptTemplate
 
 from modules.qa_interface.base_qa import BaseQAInterface, QAResult
 from modules.vector_store.chroma_store import ChromaVectorStore
+from modules.reranking.reranker import Reranker
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,9 @@ class RetrievalQAInterface(BaseQAInterface):
             model=self.config["model_name"],
             max_tokens=self.config["max_tokens"]
         )
+        
+        # リランカーを初期化
+        self.reranker = Reranker()
         
         self.qa_chain = self._create_qa_chain()
     
@@ -59,7 +63,7 @@ class RetrievalQAInterface(BaseQAInterface):
         )
         
         retriever = self.vector_store.vectorstore.as_retriever(
-            search_kwargs={"k": self.config["top_k"]}
+            search_kwargs={"k": self.config["top_k"] * 2}  # リランキング用に2倍のドキュメントを取得
         )
         
         return RetrievalQA.from_chain_type(
@@ -72,24 +76,54 @@ class RetrievalQAInterface(BaseQAInterface):
     def ask_question(self, question: str) -> Dict[str, Any]:
         """質問に対する回答を生成"""
         try:
+            # ベクトル検索でドキュメントを取得
             result = self.qa_chain(question)
             
-            sources = []
+            # ドキュメントをリランキング
+            documents = []
             for doc in result.get("source_documents", []):
-                source_info = {
+                doc_info = {
                     "content": doc.page_content,
                     "metadata": doc.metadata,
                     "source": doc.metadata.get("source", "不明"),
                     "page": doc.metadata.get("page", "不明"),
                     "engine": doc.metadata.get("engine", "不明")
                 }
+                documents.append(doc_info)
+            
+            # リランキングを実行
+            reranked_docs = self.reranker.rerank(
+                question,
+                documents,
+                top_k=self.config["top_k"]
+            )
+            
+            # リランキングされたドキュメントをコンテキストとして使用
+            context = "\n\n".join([doc.content for doc in reranked_docs])
+            
+            # 回答を生成
+            answer = self.llm.predict(
+                f"以下の情報に基づいて質問に答えてください：\n\n{context}\n\n質問：{question}"
+            )
+            
+            # 結果を整形
+            sources = []
+            for doc in reranked_docs:
+                source_info = {
+                    "content": doc.content,
+                    "metadata": doc.metadata,
+                    "source": doc.source,
+                    "page": doc.page,
+                    "engine": doc.engine,
+                    "score": doc.score
+                }
                 sources.append(source_info)
             
             qa_result = QAResult(
                 question=question,
-                answer=result["result"],
+                answer=answer,
                 sources=sources,
-                confidence=self._calculate_confidence(result)
+                confidence=self._calculate_confidence(reranked_docs)
             )
             
             return qa_result.to_dict()
@@ -103,28 +137,15 @@ class RetrievalQAInterface(BaseQAInterface):
                 "confidence": 0.0
             }
     
-    def _calculate_confidence(self, result: Dict[str, Any]) -> float:
+    def _calculate_confidence(self, reranked_docs: List[Any]) -> float:
         """回答の信頼度を計算"""
         try:
-            source_docs = result.get("source_documents", [])
-            if not source_docs:
+            if not reranked_docs:
                 return 0.0
             
-            total_score = 0.0
-            for doc in source_docs:
-                metadata = doc.metadata
-                char_count = metadata.get("char_count", 0)
-                engine = metadata.get("engine", "unknown")
-                
-                score = min(char_count / 1000, 1.0)
-                if engine in ["easyocr", "paddle"]:
-                    score *= 0.9
-                elif engine == "direct":
-                    score *= 1.0
-                
-                total_score += score
-            
-            return min(total_score / len(source_docs), 1.0)
+            # リランキングスコアの平均を計算
+            total_score = sum(doc.score for doc in reranked_docs)
+            return min(total_score / len(reranked_docs), 1.0)
             
         except Exception:
             return 0.5
@@ -140,7 +161,8 @@ class RetrievalQAInterface(BaseQAInterface):
             "model_name": self.config["model_name"],
             "temperature": str(self.llm.temperature),
             "max_tokens": str(self.config["max_tokens"]),
-            "top_k": str(self.config["top_k"])
+            "top_k": str(self.config["top_k"]),
+            "reranker": self.reranker.get_model_info()
         }
 
 class EnhancedQAInterface(RetrievalQAInterface):

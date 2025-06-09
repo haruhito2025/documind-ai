@@ -183,9 +183,10 @@ def qa_tab(qa_interface: EnhancedQAInterface, feedback_manager: FeedbackManager)
     
     st.info(f"📚 {collection_info['document_count']} 件のドキュメントが利用可能です")
     
-    col1, col2 = st.columns([3, 1])
+    # 画面を左右に分割
+    col1, col2 = st.columns([1, 1])
     
-    with col2:
+    with col1:
         st.subheader("⚙️ 設定")
         temperature = st.slider(
             "回答の創造性",
@@ -206,8 +207,7 @@ def qa_tab(qa_interface: EnhancedQAInterface, feedback_manager: FeedbackManager)
         if st.button("🗑️ 履歴クリア"):
             qa_interface.clear_history()
             st.success("履歴をクリアしました")
-    
-    with col1:
+        
         st.subheader("質問入力")
         question = st.text_area(
             "質問を入力してください",
@@ -223,6 +223,66 @@ def qa_tab(qa_interface: EnhancedQAInterface, feedback_manager: FeedbackManager)
                     result = qa_interface.ask_question(question)
                 
                 display_qa_result(result, feedback_manager)
+    
+    with col2:
+        st.subheader("📚 ドキュメント目次")
+        
+        # キーワード検索
+        search_query = st.text_input(
+            "🔍 キーワード検索",
+            placeholder="検索キーワードを入力してください",
+            help="ドキュメント内のテキストを検索します"
+        )
+        
+        # ベクトルストアからドキュメント一覧を取得
+        documents = qa_interface.vector_store.get_all_documents()
+        
+        if documents:
+            # ドキュメントをファイル名でグループ化
+            doc_groups = {}
+            for doc in documents:
+                filename = doc["metadata"].get('source', '不明')
+                if filename not in doc_groups:
+                    doc_groups[filename] = []
+                doc_groups[filename].append(doc)
+            
+            # 検索クエリがある場合はフィルタリング
+            if search_query:
+                filtered_groups = {}
+                for filename, docs in doc_groups.items():
+                    filtered_docs = []
+                    for doc in docs:
+                        if search_query.lower() in doc["text"].lower():
+                            filtered_docs.append(doc)
+                    if filtered_docs:
+                        filtered_groups[filename] = filtered_docs
+                doc_groups = filtered_groups
+            
+            # 各ドキュメントの目次を表示
+            if doc_groups:
+                for filename, docs in doc_groups.items():
+                    with st.expander(f"📄 {filename}"):
+                        for i, doc in enumerate(docs, 1):
+                            page = doc["metadata"].get('page', '不明')
+                            st.markdown(f"**ページ {page}**")
+                            
+                            # 検索クエリがある場合はハイライト表示
+                            if search_query:
+                                text = doc["text"]
+                                # 検索キーワードをハイライト
+                                highlighted_text = text.replace(
+                                    search_query.lower(),
+                                    f"**{search_query.lower()}**"
+                                )
+                                st.markdown(format_text_for_display(highlighted_text, 200))
+                            else:
+                                st.markdown(format_text_for_display(doc["text"], 200))
+                            
+                            st.markdown("---")
+            else:
+                st.info("検索結果が見つかりませんでした")
+        else:
+            st.info("ドキュメントがありません")
 
 def display_qa_result(result: Dict[str, Any], feedback_manager: FeedbackManager):
     """質問応答結果を表示"""
